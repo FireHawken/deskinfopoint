@@ -1,0 +1,106 @@
+mqtt:
+  broker: "192.168.1.10"
+  port: 1883
+  client_id: "deskinfopoint"
+  username: ""
+  password: ""
+  keepalive: 60
+
+sensor:
+  measurement_interval: 5   # seconds; SCD-30 range is 2-1800
+  temperature_offset: 0.0   # degrees C correction for self-heating
+  altitude: 50              # metres above sea level, for pressure compensation
+
+display:
+  brightness: 1.0           # 0.0–1.0; starting brightness (also shown on Brightness screen)
+  fps: 10
+  backlight_pwm: false      # set true for smooth dimming; requires dtoverlay=pwm-2chan,pin2=13,func2=4 in /boot/firmware/config.txt
+
+# Each subscription gets a unique id referenced by screens and alerts
+subscriptions:
+  - id: "living_temp"
+    topic: "homeassistant/sensor/living_room_temp/state"
+    label: "Living Room"
+    unit: "°C"
+    value_path: ""           # empty = use raw payload; "key.subkey" = traverse JSON
+
+  - id: "outdoor_temp"
+    topic: "homeassistant/sensor/outdoor_temp/state"
+    label: "Outdoor"
+    unit: "°C"
+    value_path: ""
+
+  - id: "boiler_status"
+    topic: "homeassistant/climate/boiler/state"
+    label: "Boiler"
+    unit: ""
+    value_path: "state"      # extract from JSON: {"state": "heating", ...}
+
+screens:
+  - name: "Air Quality"
+    type: sensor
+    items:
+      - label: "CO2"
+        source: co2
+        unit: "ppm"
+        format: "{:.0f}"
+      - label: "Temperature"
+        source: temperature
+        unit: "°C"
+        format: "{:.1f}"
+      - label: "Humidity"
+        source: humidity
+        unit: "%"
+        format: "{:.0f}"
+
+  - name: "Home"
+    type: mqtt
+    items:
+      - subscription_id: "living_temp"
+        format: "{:.1f}"
+      - subscription_id: "outdoor_temp"
+        format: "{:.1f}"
+      - subscription_id: "boiler_status"
+        format: "{}"
+
+  - name: "Brightness"
+    type: brightness         # X = dim (-10%), Y = brighten (+10%); overrides global X/Y on this screen
+
+buttons:
+  A: {action: prev_screen}
+  B: {action: next_screen}
+  X:
+    action: mqtt_publish
+    topic: "homeassistant/light/desk_lamp/toggle"
+    payload: ""
+  Y:
+    action: mqtt_publish
+    topic: "homeassistant/climate/boiler/set_hvac_mode"
+    payload: "heat"
+
+# Alerts are evaluated highest priority first; first match sets the LED.
+alerts:
+  - source: "sensor.co2"
+    condition: "> 1500"
+    color: [1.0, 0.0, 0.0]
+    mode: blink
+    blink_hz: 2.0
+    priority: 3
+
+  - source: "sensor.co2"
+    condition: "> 1000"
+    color: [1.0, 0.4, 0.0]
+    mode: pulse
+    pulse_hz: 0.8
+    priority: 2
+
+  - source: "sensor.temperature"
+    condition: "> 28"
+    color: [1.0, 0.6, 0.0]
+    mode: solid
+    priority: 1
+
+# Color shown when no alert is active (set color to [0,0,0] to keep LED off)
+led_idle:
+  color: [0.0, 0.15, 0.0]  # very dim green
+  mode: solid

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deskinfopoint"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "paho-mqtt>=2.0",
+    "PyYAML>=6.0",
+    "Pillow>=10.0",
+    "displayhatmini-lite",
+    "adafruit-circuitpython-scd30",
+    "adafruit-blinka",
+]
+
+[project.scripts]
+deskinfopoint = "deskinfopoint.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
