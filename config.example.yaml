@@ -1,3 +1,11 @@
+# Optional: prefetch current values from Home Assistant REST API at startup.
+# Eliminates the "no data" period for slow Zigbee/Z-Wave sensors whose MQTT
+# messages may not arrive for several minutes after launch.
+# Requires a Long-Lived Access Token from HA: Profile → Security → Long-lived access tokens.
+# ha:
+#   url: "http://homeassistant.local:8123"
+#   token: "eyJ..."
+
 mqtt:
   broker: "192.168.1.10"
   port: 1883
@@ -23,18 +31,21 @@ subscriptions:
     label: "Living Room"
     unit: "°C"
     value_path: ""           # empty = use raw payload; "key.subkey" = traverse JSON
+    entity_id: "sensor.living_room_temp"   # optional: HA entity id for startup prefetch
 
   - id: "outdoor_temp"
     topic: "homeassistant/sensor/outdoor_temp/state"
     label: "Outdoor"
     unit: "°C"
     value_path: ""
+    entity_id: "sensor.outdoor_temp"
 
   - id: "boiler_status"
     topic: "homeassistant/climate/boiler/state"
     label: "Boiler"
     unit: ""
     value_path: "state"      # extract from JSON: {"state": "heating", ...}
+    entity_id: "climate.boiler"            # prefetch uses HA state field directly (ignores value_path)
 
 screens:
   - name: "Air Quality"

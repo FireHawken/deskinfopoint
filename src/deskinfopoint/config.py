@@ -39,6 +39,12 @@ def _parse_condition(s: str) -> tuple[str, float | str]:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class HaConfig:
+    url: str     # e.g. http://homeassistant.local:8123
+    token: str   # Long-Lived Access Token
+
+
+@dataclass
 class MqttConfig:
     broker: str
     port: int = 1883
@@ -69,6 +75,7 @@ class SubscriptionConfig:
     label: str
     unit: str = ""
     value_path: str = ""
+    entity_id: str = ""   # HA entity id for startup prefetch (e.g. sensor.lumi_temp4_temperature_2)
 
 
 @dataclass
@@ -127,6 +134,7 @@ class AppConfig:
     buttons: dict[str, ButtonConfig]
     alerts: list[AlertConfig]
     led_idle: LedIdleConfig
+    ha: HaConfig | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +164,15 @@ def load_config(path: str) -> AppConfig:
 
     if not isinstance(raw, dict):
         raise ConfigError("Config file must be a YAML mapping")
+
+    # --- ha (optional) ---
+    ha: HaConfig | None = None
+    if "ha" in raw:
+        h = raw["ha"]
+        ha = HaConfig(
+            url=_require(h, "url", "ha").rstrip("/"),
+            token=_require(h, "token", "ha"),
+        )
 
     # --- mqtt ---
     m = raw.get("mqtt", {})
@@ -193,6 +210,7 @@ def load_config(path: str) -> AppConfig:
             label=sub.get("label", sub["id"]),
             unit=sub.get("unit", ""),
             value_path=sub.get("value_path", ""),
+            entity_id=sub.get("entity_id", ""),
         ))
 
     # --- screens ---
@@ -271,4 +289,5 @@ def load_config(path: str) -> AppConfig:
         buttons=buttons,
         alerts=alerts,
         led_idle=led_idle,
+        ha=ha,
     )

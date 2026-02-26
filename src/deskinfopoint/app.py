@@ -11,6 +11,7 @@ from .config import AppConfig, ScreenConfig, SubscriptionConfig
 from .hardware.buttons import ButtonHandler
 from .hardware.display import DisplayController
 from .hardware.led import LEDController
+from .ha_prefetch import prefetch as ha_prefetch
 from .mqtt_client import MQTTClient
 from .screens.base import Screen
 from .screens.brightness_screen import BrightnessScreen
@@ -81,6 +82,8 @@ class App:
         logger.info("Starting deskinfopoint")
         self._mqtt.start()
         self._sensor.start()
+        if self._config.ha:
+            ha_prefetch(self._config.ha, self._config.subscriptions, self._state)
         self._led.start()
         self._renderer.start()
         self._buttons.start()
