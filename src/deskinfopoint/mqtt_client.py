@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import queue
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -26,7 +25,6 @@ class MQTTClient:
             s.topic: s for s in subscriptions
         }
         self._state = state
-        self._publish_queue: queue.Queue[tuple[str, str]] = queue.Queue()
 
         self._client = mqtt.Client(
             callback_api_version=CallbackAPIVersion.VERSION2,
@@ -51,8 +49,9 @@ class MQTTClient:
         self._client.disconnect()
 
     def publish(self, topic: str, payload: str) -> None:
-        """Thread-safe: enqueue a publish for the paho network thread."""
-        self._publish_queue.put((topic, payload))
+        """Publish a message. Thread-safe: paho queues it internally for the network thread."""
+        self._client.publish(topic, payload, qos=1)
+        logger.info("Published %s → %r", topic, payload)
 
     # --- paho callbacks (run in paho's network thread) ---
 
@@ -64,8 +63,6 @@ class MQTTClient:
         for topic in self._subs_by_topic:
             client.subscribe(topic, qos=1)
             logger.debug("Subscribed to %s", topic)
-        # Drain any queued publishes that arrived before connection was up
-        self._drain_publish_queue(client)
 
     def _on_message(self, client, userdata, message) -> None:
         sub = self._subs_by_topic.get(message.topic)
@@ -78,21 +75,10 @@ class MQTTClient:
             logger.debug("MQTT %s → %s = %r", message.topic, sub.id, value)
         except Exception:
             logger.exception("Error processing MQTT message on %s", message.topic)
-        # Drain any pending publishes each time a message arrives
-        self._drain_publish_queue(client)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties) -> None:
         if reason_code.is_failure:
             logger.warning("MQTT disconnected unexpectedly (%s); will reconnect", reason_code)
-
-    def _drain_publish_queue(self, client) -> None:
-        while not self._publish_queue.empty():
-            try:
-                topic, payload = self._publish_queue.get_nowait()
-                client.publish(topic, payload, qos=1)
-                logger.info("Published %s → %r", topic, payload)
-            except queue.Empty:
-                break
 
     def _extract_value(self, raw: str, value_path: str) -> Any:
         """Return a float if possible, else str.  Traverses dot-notation JSON path."""
