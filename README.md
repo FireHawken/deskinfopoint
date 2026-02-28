@@ -43,7 +43,7 @@ cp config.example.yaml config.yaml
 # Edit config.yaml — set your MQTT broker, topics, screens, button mappings, and LED alerts
 ```
 
-## Running
+## Running manually
 
 ```bash
 source .venv/bin/activate
@@ -55,10 +55,23 @@ deskinfopoint
 python -m deskinfopoint --config /path/to/config.yaml --log-level DEBUG
 ```
 
-To run in the background and keep logs:
+## Auto-start on boot (systemd)
+
+Run the install script once to register and enable a systemd service:
 
 ```bash
-nohup python -m deskinfopoint > deskinfopoint.log 2>&1 &
+bash install-service.sh
+```
+
+The script creates `/etc/systemd/system/deskinfopoint.service`, enables it, and starts it immediately. The service starts automatically after every reboot, restarts on failure, and waits for the network to be available before launching.
+
+Useful commands:
+
+```bash
+sudo systemctl status deskinfopoint      # check status
+sudo journalctl -u deskinfopoint -f      # follow live logs
+sudo systemctl restart deskinfopoint     # restart manually
+sudo systemctl disable deskinfopoint     # remove from autostart
 ```
 
 ## Configuration
@@ -68,7 +81,8 @@ All behaviour is controlled by `config.yaml`. See `config.example.yaml` for a fu
 | Section | What it controls |
 |---|---|
 | `mqtt` | Broker address, credentials |
-| `subscriptions` | MQTT topics to subscribe to, with label, unit, optional JSON `value_path` |
+| `ha` | *(optional)* Home Assistant URL and Long-Lived Access Token for startup prefetch |
+| `subscriptions` | MQTT topics to subscribe to, with label, unit, optional JSON `value_path`, and optional `entity_id` for HA prefetch |
 | `screens` | Ordered list of screens; `type: sensor` shows SCD-30 data, `type: mqtt` shows subscription values |
 | `buttons` | Map A/B/X/Y to `prev_screen`, `next_screen`, or `mqtt_publish` |
 | `alerts` | LED colour/mode when thresholds are crossed (e.g. CO2 > 1000 ppm) |
