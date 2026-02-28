@@ -23,7 +23,7 @@ class SharedState:
         self._mqtt: dict[str, Any] = {}
         self._current_screen = 0
         self._screen_count = screen_count
-        self._brightness: float = max(0.1, min(1.0, initial_brightness))
+        self._brightness: float = max(0.05, min(1.0, initial_brightness))
         self._version: int = 0  # incremented on every write; readers use this to skip redundant work
 
     # --- Version (change detection) ---
@@ -75,7 +75,7 @@ class SharedState:
 
     def set_brightness(self, value: float) -> None:
         with self._lock:
-            self._brightness = max(0.1, min(1.0, round(value, 1)))
+            self._brightness = max(0.05, min(1.0, round(value, 2)))
             self._version += 1
 
     # --- MQTT values ---
