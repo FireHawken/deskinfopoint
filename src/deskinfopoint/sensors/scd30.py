@@ -44,15 +44,25 @@ class SCD30Sensor:
             logger.error("SCD-30 dependencies not available: %s. Sensor disabled.", e)
             return
 
-        try:
-            i2c = busio.I2C(board.SCL, board.SDA, frequency=50000)
-            scd = adafruit_scd30.SCD30(i2c)
-            scd.measurement_interval = self._config.measurement_interval
-            scd.temperature_offset = self._config.temperature_offset
-            if self._config.altitude:
-                scd.altitude = self._config.altitude
-        except Exception:
-            logger.exception("Failed to initialise SCD-30 sensor")
+        scd = None
+        for attempt in range(1, 13):   # up to 12 attempts (~60 s)
+            try:
+                i2c = busio.I2C(board.SCL, board.SDA, frequency=50000)
+                scd = adafruit_scd30.SCD30(i2c)
+                scd.measurement_interval = self._config.measurement_interval
+                scd.temperature_offset = self._config.temperature_offset
+                if self._config.altitude:
+                    scd.altitude = self._config.altitude
+                break
+            except Exception as e:
+                logger.warning(
+                    "SCD-30 init attempt %d/12 failed: %s — retrying in 5 s", attempt, e
+                )
+                if self._shutdown.wait(timeout=5):
+                    return   # shutdown requested while waiting
+
+        if scd is None:
+            logger.error("SCD-30 failed to initialise after 12 attempts; sensor disabled")
             return
 
         logger.info(
