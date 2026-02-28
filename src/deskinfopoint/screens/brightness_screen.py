@@ -23,14 +23,18 @@ class BrightnessScreen(Screen):
 
     def handle_button(self, name: str, state: SharedState, display) -> bool:
         if name == "X":
-            new = max(0.05, round(state.get_brightness() - _STEP, 2))
-            state.set_brightness(new)
-            display.set_backlight(new)
+            current = state.get_brightness()
+            new = max(0.05, round(current - _STEP, 2))
+            if new != current:
+                state.set_brightness(new)
+                display.set_backlight(new)
             return True
         if name == "Y":
-            new = min(1.0, round(state.get_brightness() + _STEP, 1))
-            state.set_brightness(new)
-            display.set_backlight(new)
+            current = state.get_brightness()
+            new = 0.1 if current < 0.1 else min(1.0, round(current + _STEP, 1))
+            if new != current:
+                state.set_brightness(new)
+                display.set_backlight(new)
             return True
         return False
 
