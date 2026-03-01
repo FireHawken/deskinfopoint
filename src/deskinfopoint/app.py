@@ -16,6 +16,7 @@ from .mqtt_client import MQTTClient
 from . import persistence
 from .screens.base import Screen
 from .screens.brightness_screen import BrightnessScreen
+from .screens.led_brightness_screen import LedBrightnessScreen
 from .screens.mqtt_screen import MQTTScreen
 from .screens.sensor_screen import SensorScreen
 from .sensors.scd30 import SCD30Sensor
@@ -36,6 +37,8 @@ def _build_screens(
             screens.append(MQTTScreen(cfg, subs_by_id))
         elif cfg.type == "brightness":
             screens.append(BrightnessScreen(cfg.name))
+        elif cfg.type == "led_brightness":
+            screens.append(LedBrightnessScreen(cfg.name))
         else:
             logger.warning("Unknown screen type %r — skipped", cfg.type)
     return screens
@@ -57,6 +60,7 @@ class App:
         # Load persisted state; fall back to config defaults.
         saved = persistence.load(state_file)
         initial_brightness = float(saved.get("brightness", config.display.brightness))
+        initial_led_brightness = float(saved.get("led_brightness", 1.0))
         initial_screen = int(saved.get("screen", 0))
         # Clamp screen index in case the screen list has shrunk since last run.
         initial_screen = max(0, min(initial_screen, len(screens) - 1))
@@ -64,6 +68,7 @@ class App:
         self._state = SharedState(
             screen_count=len(screens),
             initial_brightness=initial_brightness,
+            initial_led_brightness=initial_led_brightness,
         )
         # Restore saved screen position.
         for _ in range(initial_screen):
@@ -73,11 +78,11 @@ class App:
         self._display_hw.set_backlight(initial_brightness)
 
         self._mqtt = MQTTClient(config.mqtt, config.subscriptions, self._state)
-        self._sensor = SCD30Sensor(config.sensor, self._state, self._shutdown)
+        self._sensor = SCD30Sensor(config.sensor, self._state, self._shutdown, self._mqtt)
 
         evaluator = AlertEvaluator(config.alerts, self._state)
         self._led = LEDController(
-            self._display_hw, evaluator, config.led_idle, self._shutdown
+            self._display_hw, evaluator, config.led_idle, self._state, self._shutdown
         )
         self._renderer = DisplayController(
             self._display_hw, screens, self._state, config.display.fps, self._shutdown
@@ -120,17 +125,26 @@ class App:
             self._state_file,
             self._state.get_current_screen(),
             self._state.get_brightness(),
+            self._state.get_led_brightness(),
         )
         logger.info("Shutdown complete")
 
     def _persist_watcher(self) -> None:
-        """Daemon thread: saves state whenever screen or brightness changes."""
-        last = (self._state.get_current_screen(), self._state.get_brightness())
+        """Daemon thread: saves state whenever screen, brightness, or LED brightness changes."""
+        last = (
+            self._state.get_current_screen(),
+            self._state.get_brightness(),
+            self._state.get_led_brightness(),
+        )
         while not self._shutdown.is_set():
             self._shutdown.wait(timeout=1.0)
-            current = (self._state.get_current_screen(), self._state.get_brightness())
+            current = (
+                self._state.get_current_screen(),
+                self._state.get_brightness(),
+                self._state.get_led_brightness(),
+            )
             if current != last:
-                persistence.save(self._state_file, current[0], current[1])
+                persistence.save(self._state_file, current[0], current[1], current[2])
                 last = current
 
     def _handle_signal(self, signum: int, frame: object) -> None:

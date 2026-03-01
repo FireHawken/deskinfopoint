@@ -21,12 +21,15 @@ def load(path: str) -> dict:
     return {}
 
 
-def save(path: str, screen: int, brightness: float) -> None:
-    """Atomically write screen index and brightness to *path*."""
+def save(path: str, screen: int, brightness: float, led_brightness: float = 1.0) -> None:
+    """Atomically write screen index, brightness, and LED brightness to *path*."""
     tmp = path + ".tmp"
     try:
         with open(tmp, "w") as f:
-            json.dump({"screen": screen, "brightness": brightness}, f)
+            json.dump(
+                {"screen": screen, "brightness": brightness, "led_brightness": led_brightness},
+                f,
+            )
         os.replace(tmp, path)
     except Exception as e:
         logger.warning("Could not save state file %s: %s", path, e)

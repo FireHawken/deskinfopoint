@@ -82,11 +82,39 @@ All behaviour is controlled by `config.yaml`. See `config.example.yaml` for a fu
 |---|---|
 | `mqtt` | Broker address, credentials |
 | `ha` | *(optional)* Home Assistant URL and Long-Lived Access Token for startup prefetch |
+| `sensor` | SCD-30 poll interval, temperature offset, altitude, and optional `publish_topic` |
 | `subscriptions` | MQTT topics to subscribe to, with label, unit, optional JSON `value_path`, and optional `entity_id` for HA prefetch |
-| `screens` | Ordered list of screens; `type: sensor` shows SCD-30 data, `type: mqtt` shows subscription values |
+| `screens` | Ordered list of screens (see screen types below) |
 | `buttons` | Map A/B/X/Y to `prev_screen`, `next_screen`, or `mqtt_publish` |
 | `alerts` | LED colour/mode when thresholds are crossed (e.g. CO2 > 1000 ppm) |
 | `led_idle` | LED colour when no alert is active |
+
+### Screen types
+
+| Type | Description |
+|---|---|
+| `sensor` | Shows SCD-30 readings (CO2, temperature, humidity); CO2 is colour-coded by threshold |
+| `mqtt` | Shows values from MQTT subscriptions |
+| `brightness` | Adjust display backlight brightness with X (dim) / Y (brighten) in 10% steps |
+| `led_brightness` | Adjust RGB LED brightness with X (dim) / Y (brighten) in 10% steps; 0% turns the LED fully off |
+
+### Sensor MQTT publishing
+
+Set `publish_topic` under `sensor` to have every SCD-30 reading published to an MQTT topic as JSON:
+
+```yaml
+sensor:
+  measurement_interval: 5
+  publish_topic: "home/livingroom/env"   # omit or leave empty to disable
+```
+
+Payload format:
+
+```json
+{"co2": 845, "temperature": 22.5, "humidity": 41.2}
+```
+
+Published on every measurement cycle (default every 5 seconds). Useful for feeding readings into Home Assistant, Node-RED, or any other MQTT consumer without needing a separate sensor integration.
 
 ### LED alert modes
 

@@ -59,6 +59,7 @@ class SensorConfig:
     measurement_interval: int = 5
     temperature_offset: float = 0.0
     altitude: int = 0
+    publish_topic: str = ""   # MQTT topic for JSON sensor readings; empty = disabled
 
 
 @dataclass
@@ -191,6 +192,7 @@ def load_config(path: str) -> AppConfig:
         measurement_interval=s.get("measurement_interval", 5),
         temperature_offset=s.get("temperature_offset", 0.0),
         altitude=s.get("altitude", 0),
+        publish_topic=s.get("publish_topic", ""),
     )
 
     # --- display ---

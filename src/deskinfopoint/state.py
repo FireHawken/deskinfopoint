@@ -17,13 +17,19 @@ class SensorReading:
 class SharedState:
     """Central thread-safe data bus for all application state."""
 
-    def __init__(self, screen_count: int, initial_brightness: float = 1.0) -> None:
+    def __init__(
+        self,
+        screen_count: int,
+        initial_brightness: float = 1.0,
+        initial_led_brightness: float = 1.0,
+    ) -> None:
         self._lock = threading.Lock()
         self._sensor = SensorReading()
         self._mqtt: dict[str, Any] = {}
         self._current_screen = 0
         self._screen_count = screen_count
         self._brightness: float = max(0.05, min(1.0, initial_brightness))
+        self._led_brightness: float = max(0.0, min(1.0, initial_led_brightness))
         self._version: int = 0  # incremented on every write; readers use this to skip redundant work
 
     # --- Version (change detection) ---
@@ -76,6 +82,17 @@ class SharedState:
     def set_brightness(self, value: float) -> None:
         with self._lock:
             self._brightness = max(0.05, min(1.0, round(value, 2)))
+            self._version += 1
+
+    # --- LED brightness ---
+
+    def get_led_brightness(self) -> float:
+        with self._lock:
+            return self._led_brightness
+
+    def set_led_brightness(self, value: float) -> None:
+        with self._lock:
+            self._led_brightness = max(0.0, min(1.0, round(value, 2)))
             self._version += 1
 
     # --- MQTT values ---

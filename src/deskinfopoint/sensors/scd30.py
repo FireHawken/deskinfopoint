@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 from ..config import SensorConfig
 from ..state import SharedState
+
+if TYPE_CHECKING:
+    from ..mqtt_client import MQTTClient
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +18,9 @@ class SCD30Sensor:
     """Reads CO2, temperature, and humidity from an Adafruit SCD-30 via I2C.
 
     Runs in a dedicated daemon thread; polls the sensor at the configured
-    measurement_interval and writes readings to SharedState.
+    measurement_interval and writes readings to SharedState.  If
+    config.publish_topic is set, each reading is also published as JSON
+    to that MQTT topic.
     """
 
     def __init__(
@@ -21,10 +28,12 @@ class SCD30Sensor:
         config: SensorConfig,
         state: SharedState,
         shutdown: threading.Event,
+        mqtt: MQTTClient | None = None,
     ) -> None:
         self._config = config
         self._state = state
         self._shutdown = shutdown
+        self._mqtt = mqtt
         self._thread = threading.Thread(
             target=self._run, name="scd30", daemon=False
         )
@@ -81,6 +90,13 @@ class SCD30Sensor:
                     rh = scd.relative_humidity
                     self._state.update_sensor(co2=co2, temperature=temp, humidity=rh)
                     logger.debug("SCD-30 read: CO2=%.0f ppm  T=%.1f°C  RH=%.0f%%", co2, temp, rh)
+                    if self._mqtt and self._config.publish_topic:
+                        payload = json.dumps({
+                            "co2": round(co2),
+                            "temperature": round(temp, 1),
+                            "humidity": round(rh, 1),
+                        })
+                        self._mqtt.publish(self._config.publish_topic, payload)
             except Exception:
                 logger.exception("SCD-30 read error")
 

@@ -6,6 +6,7 @@ import threading
 
 from ..alerts import AlertEvaluator
 from ..config import LedIdleConfig
+from ..state import SharedState
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,13 @@ class LEDController:
         display,  # DisplayHATMini instance
         evaluator: AlertEvaluator,
         idle: LedIdleConfig,
+        state: SharedState,
         shutdown: threading.Event,
     ) -> None:
         self._display = display
         self._evaluator = evaluator
         self._idle = idle
+        self._state = state
         self._shutdown = shutdown
         self._thread = threading.Thread(
             target=self._run, name="led", daemon=False
@@ -45,9 +48,11 @@ class LEDController:
         t = 0.0
         _last_solid_rgb: tuple[float, float, float] | None = None
         while not self._shutdown.is_set():
+            led_brightness = self._state.get_led_brightness() ** 2.2  # gamma: perceptual linearity
             alert = self._evaluator.active_alert()
             cfg = alert if alert is not None else self._idle
             r, g, b = cfg.color
+            r, g, b = r * led_brightness, g * led_brightness, b * led_brightness
             mode = cfg.mode
 
             if mode == "blink":

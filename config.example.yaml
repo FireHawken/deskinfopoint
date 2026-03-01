@@ -18,6 +18,7 @@ sensor:
   measurement_interval: 5   # seconds; SCD-30 range is 2-1800
   temperature_offset: 0.0   # degrees C correction for self-heating
   altitude: 50              # metres above sea level, for pressure compensation
+  publish_topic: "home/livingroom/env"   # MQTT topic for JSON readings; comment out or leave empty to disable
 
 display:
   brightness: 1.0           # 0.0–1.0; starting brightness (also shown on Brightness screen)
@@ -76,6 +77,9 @@ screens:
 
   - name: "Brightness"
     type: brightness         # X = dim (-10%), Y = brighten (+10%); overrides global X/Y on this screen
+
+  - name: "LED Brightness"
+    type: led_brightness     # X = dim (-10%), Y = brighten (+10%); 0% turns LED fully off
 
 buttons:
   A: {action: prev_screen}
