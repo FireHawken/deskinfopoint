@@ -5,6 +5,7 @@ import fcntl
 import logging
 import os
 import sys
+from pathlib import Path
 
 from .config import ConfigError, load_config
 from .app import App
@@ -72,7 +73,8 @@ def main() -> None:
         sys.exit(1)
 
     _lock = _acquire_lock()  # noqa: F841 — kept alive to hold the OS lock
-    App(config).run()
+    state_file = str(Path(args.config).resolve().parent / "state.json")
+    App(config, state_file).run()
 
 
 if __name__ == "__main__":
