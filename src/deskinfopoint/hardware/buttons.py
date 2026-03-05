@@ -89,6 +89,11 @@ class ButtonHandler:
         logger.info("Button polling stopped")
 
     def _on_press(self, name: str) -> None:
+        # Night mode: any press wakes the display/LED; the press itself is consumed.
+        if self._state.is_night_sleeping():
+            self._state.night_wake()
+            return
+
         # Give the current screen first chance to handle the button.
         screen = self._screens[self._state.get_current_screen()]
         if screen.handle_button(name, self._state, self._display):

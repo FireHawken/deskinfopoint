@@ -3,7 +3,11 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .config import NightModeConfig
 
 
 @dataclass
@@ -22,6 +26,7 @@ class SharedState:
         screen_count: int,
         initial_brightness: float = 1.0,
         initial_led_brightness: float = 1.0,
+        night_mode: "NightModeConfig | None" = None,
     ) -> None:
         self._lock = threading.Lock()
         self._sensor = SensorReading()
@@ -30,6 +35,8 @@ class SharedState:
         self._screen_count = screen_count
         self._brightness: float = max(0.05, min(1.0, initial_brightness))
         self._led_brightness: float = max(0.0, min(1.0, initial_led_brightness))
+        self._night_mode = night_mode
+        self._night_wake_until: float = 0.0   # monotonic; 0 = not woken
         self._version: int = 0  # incremented on every write; readers use this to skip redundant work
 
     # --- Version (change detection) ---
@@ -93,6 +100,32 @@ class SharedState:
     def set_led_brightness(self, value: float) -> None:
         with self._lock:
             self._led_brightness = max(0.0, min(1.0, round(value, 2)))
+            self._version += 1
+
+    # --- Night mode ---
+
+    def is_night_sleeping(self) -> bool:
+        """Return True if night mode window is active and the wake period has expired."""
+        if self._night_mode is None:
+            return False
+        now = datetime.now().time()
+        start, end = self._night_mode.start, self._night_mode.end
+        # Overnight span (e.g. 22:00–07:00): active when now >= start OR now < end
+        if start > end:
+            in_window = now >= start or now < end
+        else:
+            in_window = start <= now < end
+        if not in_window:
+            return False
+        with self._lock:
+            return time.monotonic() >= self._night_wake_until
+
+    def night_wake(self) -> None:
+        """Temporarily wake from night mode sleep for the configured duration."""
+        if self._night_mode is None:
+            return
+        with self._lock:
+            self._night_wake_until = time.monotonic() + self._night_mode.wake_duration
             self._version += 1
 
     # --- MQTT values ---

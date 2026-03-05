@@ -69,6 +69,7 @@ class App:
             screen_count=len(screens),
             initial_brightness=initial_brightness,
             initial_led_brightness=initial_led_brightness,
+            night_mode=config.night_mode,
         )
         # Restore saved screen position.
         for _ in range(initial_screen):

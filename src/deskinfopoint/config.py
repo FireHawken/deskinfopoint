@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import time as Time
 from typing import Any
 
 import yaml
@@ -126,6 +127,13 @@ class LedIdleConfig:
 
 
 @dataclass
+class NightModeConfig:
+    start: Time   # local wall-clock time sleep begins
+    end: Time     # local wall-clock time sleep ends (may be next day)
+    wake_duration: int = 30   # seconds display + LED stay on after a button press
+
+
+@dataclass
 class AppConfig:
     mqtt: MqttConfig
     sensor: SensorConfig
@@ -136,11 +144,20 @@ class AppConfig:
     alerts: list[AlertConfig]
     led_idle: LedIdleConfig
     ha: HaConfig | None = None
+    night_mode: NightModeConfig | None = None
 
 
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
+def _parse_time(s: str, context: str) -> Time:
+    try:
+        h, m = str(s).split(":")
+        return Time(int(h), int(m))
+    except (ValueError, AttributeError):
+        raise ConfigError(f"Invalid time {s!r} in {context}; expected HH:MM")
+
 
 def _require(d: dict, key: str, context: str) -> Any:
     if key not in d:
@@ -282,6 +299,16 @@ def load_config(path: str) -> AppConfig:
         mode=li.get("mode", "solid"),
     )
 
+    # --- night_mode (optional) ---
+    night_mode: NightModeConfig | None = None
+    if "night_mode" in raw:
+        nm = raw["night_mode"]
+        night_mode = NightModeConfig(
+            start=_parse_time(_require(nm, "start", "night_mode"), "night_mode.start"),
+            end=_parse_time(_require(nm, "end", "night_mode"), "night_mode.end"),
+            wake_duration=int(nm.get("wake_duration", 30)),
+        )
+
     return AppConfig(
         mqtt=mqtt,
         sensor=sensor,
@@ -292,4 +319,5 @@ def load_config(path: str) -> AppConfig:
         alerts=alerts,
         led_idle=led_idle,
         ha=ha,
+        night_mode=night_mode,
     )

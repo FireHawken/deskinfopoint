@@ -43,7 +43,24 @@ class DisplayController:
     def _run(self) -> None:
         logger.info("Display render loop started (%.0f FPS)", 1.0 / self._frame_time)
         last_version = -1
+        was_sleeping = False
         while not self._shutdown.is_set():
+            sleeping = self._state.is_night_sleeping()
+
+            if sleeping != was_sleeping:
+                was_sleeping = sleeping
+                if sleeping:
+                    self._display.set_backlight(0.0)
+                    logger.info("Night mode: display off")
+                else:
+                    self._display.set_backlight(self._state.get_brightness())
+                    last_version = -1   # force re-render immediately on wake
+                    logger.info("Night mode: display on")
+
+            if sleeping:
+                self._shutdown.wait(timeout=1.0)
+                continue
+
             version = self._state.get_version()
             if version != last_version:
                 t0 = time.monotonic()

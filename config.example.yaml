@@ -119,3 +119,11 @@ alerts:
 led_idle:
   color: [0.0, 0.15, 0.0]  # very dim green
   mode: solid
+
+# Night mode: turn off display and LED during set hours.
+# Any button press wakes them for wake_duration seconds without triggering
+# its normal action. Times are local 24h HH:MM format; overnight spans work.
+# night_mode:
+#   start: "22:00"
+#   end: "07:00"
+#   wake_duration: 30   # seconds before returning to sleep

@@ -47,7 +47,21 @@ class LEDController:
     def _run(self) -> None:
         t = 0.0
         _last_solid_rgb: tuple[float, float, float] | None = None
+        _was_sleeping = False
         while not self._shutdown.is_set():
+            sleeping = self._state.is_night_sleeping()
+            if sleeping != _was_sleeping:
+                _was_sleeping = sleeping
+                if sleeping:
+                    self._display.set_led(0.0, 0.0, 0.0)
+                    _last_solid_rgb = None
+                # On any transition, loop immediately without sleeping
+                continue
+
+            if sleeping:
+                self._shutdown.wait(timeout=1.0)
+                continue
+
             led_brightness = self._state.get_led_brightness() ** 2.2  # gamma: perceptual linearity
             alert = self._evaluator.active_alert()
             cfg = alert if alert is not None else self._idle
