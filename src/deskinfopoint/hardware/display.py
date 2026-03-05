@@ -43,6 +43,7 @@ class DisplayController:
     def _run(self) -> None:
         logger.info("Display render loop started (%.0f FPS)", 1.0 / self._frame_time)
         last_version = -1
+        last_minute = -1
         was_sleeping = False
         while not self._shutdown.is_set():
             sleeping = self._state.is_night_sleeping()
@@ -60,6 +61,12 @@ class DisplayController:
             if sleeping:
                 self._shutdown.wait(timeout=1.0)
                 continue
+
+            # Force re-render when the minute changes so the clock stays current.
+            current_minute = time.localtime().tm_min
+            if current_minute != last_minute:
+                last_minute = current_minute
+                last_version = -1
 
             version = self._state.get_version()
             if version != last_version:
