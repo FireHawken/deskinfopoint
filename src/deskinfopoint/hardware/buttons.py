@@ -25,6 +25,7 @@ _BUTTON_PINS: dict[str, int] = {
 
 _POLL_INTERVAL = 0.05   # 50 ms — responsive enough, low CPU overhead
 _DEBOUNCE_COUNT = 2     # require N consecutive identical reads before acting
+_LOCKOUT = 0.2          # seconds: after any press, ignore all other buttons
 
 
 class ButtonHandler:
@@ -69,6 +70,7 @@ class ButtonHandler:
         prev_state: dict[str, bool] = {name: False for name in _BUTTON_PINS}
         stable_state: dict[str, bool] = {name: False for name in _BUTTON_PINS}
         counts: dict[str, int] = {name: 0 for name in _BUTTON_PINS}
+        last_press_time: float = 0.0
 
         while not self._shutdown.is_set():
             for name, pin in _BUTTON_PINS.items():
@@ -81,7 +83,14 @@ class ButtonHandler:
 
                 if counts[name] == _DEBOUNCE_COUNT:
                     if pressed and not stable_state[name]:
-                        self._on_press(name)
+                        now = time.monotonic()
+                        if now - last_press_time >= _LOCKOUT:
+                            self._on_press(name)
+                            last_press_time = now
+                            # Reset sibling counts so no other button fires this sweep.
+                            for other in counts:
+                                if other != name:
+                                    counts[other] = 0
                     stable_state[name] = pressed
 
             self._shutdown.wait(timeout=_POLL_INTERVAL)
