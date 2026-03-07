@@ -17,6 +17,7 @@ from . import persistence
 from .screens.base import Screen
 from .screens.brightness_screen import BrightnessScreen
 from .screens.led_brightness_screen import LedBrightnessScreen
+from .screens.mixed_screen import MixedScreen
 from .screens.mqtt_screen import MQTTScreen
 from .screens.sensor_screen import SensorScreen
 from .sensors.scd30 import SCD30Sensor
@@ -35,6 +36,8 @@ def _build_screens(
             screens.append(SensorScreen(cfg))
         elif cfg.type == "mqtt":
             screens.append(MQTTScreen(cfg, subs_by_id))
+        elif cfg.type == "mixed":
+            screens.append(MixedScreen(cfg, subs_by_id))
         elif cfg.type == "brightness":
             screens.append(BrightnessScreen(cfg.name))
         elif cfg.type == "led_brightness":

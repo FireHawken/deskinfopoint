@@ -41,13 +41,68 @@ def value_font_size(row_height: int) -> int:
     """Pick a value font size that comfortably fills the available row height."""
     if row_height >= 150:
         return 80
-    if row_height >= 100:
-        return 56
+    if row_height >= 105:
+        return 64
     if row_height >= 70:
         return 40
     if row_height >= 55:
         return 32
     return 26
+
+
+def cell_layout(
+    n: int, items_y0: int, items_y1: int, width: int
+) -> list[tuple[int, int, int, int, bool]]:
+    """Compute (x0, y0, x1, y1, featured) for each of n items.
+
+    Layout rules:
+      n=1          → single featured cell, full width
+      even n       → 2-col grid, n//2 rows
+      odd n >= 3   → 1 featured row (full width) + 2-col grid for remaining n-1
+    """
+    content_h = items_y1 - items_y0
+
+    if n == 1:
+        return [(0, items_y0, width, items_y1, True)]
+
+    if n % 2 == 0:
+        rows = n // 2
+        row_h = content_h // rows
+        half_w = width // 2
+        return [
+            (
+                (i % 2) * half_w,
+                items_y0 + (i // 2) * row_h,
+                (i % 2 + 1) * half_w,
+                items_y0 + (i // 2 + 1) * row_h,
+                False,
+            )
+            for i in range(n)
+        ]
+
+    # odd n >= 3: featured first row + 2-col grid
+    rest = n - 1
+    grid_rows = rest // 2
+    # Grid rows have a fixed max height; featured gets the rest
+    grid_row_h = min(80, (content_h - 30) // grid_rows)
+    featured_h = content_h - grid_row_h * grid_rows
+    half_w = width // 2
+
+    cells: list[tuple[int, int, int, int, bool]] = [
+        (0, items_y0, width, items_y0 + featured_h, True)
+    ]
+    grid_y0 = items_y0 + featured_h
+    for i in range(rest):
+        col = i % 2
+        row = i // 2
+        cells.append((
+            col * half_w,
+            grid_y0 + row * grid_row_h,
+            (col + 1) * half_w,
+            grid_y0 + (row + 1) * grid_row_h,
+            False,
+        ))
+    return cells
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +197,92 @@ class Screen(ABC):
             x = x0 + i * spacing
             color = "#ffffff" if i == current else "#3a3a3a"
             draw.ellipse([x - dot_r, y - dot_r, x + dot_r, y + dot_r], fill=color)
+
+    def _draw_item_cell(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x0: int, y0: int, x1: int, y1: int,
+        featured: bool,
+        label: str,
+        text: str,
+        unit: str,
+        value_color: str,
+    ) -> None:
+        """Draw a single item into its cell rect.
+
+        Featured cells: label + value centered, large font.
+        Grid cells: label + value left-aligned, capped font size.
+        """
+        cell_h = y1 - y0
+        label_font = load_font(13)
+
+        if featured:
+            cx = (x0 + x1) // 2
+            val_size = value_font_size(cell_h)
+            val_font = load_font(val_size, bold=True)
+            unit_font = load_font(max(13, val_size // 2))
+            # Center label + value as a tight block vertically in the cell
+            lbl_gap = 4  # px between label bottom and value top
+            block_h = 13 + lbl_gap + val_size
+            block_y = y0 + (cell_h - block_h) // 2
+            lbl_w = int(draw.textlength(label, font=label_font))
+            draw.text((cx - lbl_w // 2, block_y), label, font=label_font, fill="#a0b4c8")
+            # Value + unit block centered horizontally
+            val_w = int(draw.textlength(text, font=val_font))
+            unit_w = int(draw.textlength(unit, font=unit_font)) if unit else 0
+            gap = 4 if unit else 0
+            block_w = val_w + gap + unit_w
+            val_x = cx - block_w // 2
+            val_y = block_y + 13 + lbl_gap
+            draw.text((val_x, val_y), text, font=val_font, fill=value_color)
+            if unit:
+                unit_y = val_y + val_size - int(unit_font.size) - 2
+                draw.text((val_x + val_w + gap, unit_y), unit, font=unit_font, fill="#a0b4c8")
+        else:
+            # Grid cell: centered, auto-shrink value to fit half-width column
+            cx = (x0 + x1) // 2
+            max_text_w = (x1 - x0) - 20  # 10px padding each side
+            val_size = min(value_font_size(cell_h), 36)
+            val_font = load_font(val_size, bold=True)
+            unit_font = load_font(max(13, val_size // 2))
+            val_w = int(draw.textlength(text, font=val_font))
+            unit_w = int(draw.textlength(unit, font=unit_font)) if unit else 0
+            block_w = val_w + (4 if unit else 0) + unit_w
+            # Shrink until value+unit fits
+            while block_w > max_text_w and val_size > 14:
+                val_size -= 2
+                val_font = load_font(val_size, bold=True)
+                unit_font = load_font(max(13, val_size // 2))
+                val_w = int(draw.textlength(text, font=val_font))
+                unit_w = int(draw.textlength(unit, font=unit_font)) if unit else 0
+                block_w = val_w + (4 if unit else 0) + unit_w
+            # Center label
+            lbl_w = int(draw.textlength(label, font=label_font))
+            draw.text((cx - lbl_w // 2, y0 + 4), label, font=label_font, fill="#a0b4c8")
+            # Center value+unit block
+            val_x = cx - block_w // 2
+            draw.text((val_x, y0 + 20), text, font=val_font, fill=value_color)
+            if unit:
+                unit_y = y0 + 20 + val_size - int(unit_font.size) - 2
+                draw.text((val_x + val_w + 4, unit_y), unit, font=unit_font, fill="#a0b4c8")
+
+    def _draw_cell_separators(
+        self,
+        draw: ImageDraw.ImageDraw,
+        cells: list[tuple[int, int, int, int, bool]],
+    ) -> None:
+        """Draw separator lines between cells."""
+        seen_hy: set[int] = set()
+        seen_vx: set[tuple[int, int, int]] = set()
+        for x0, y0, x1, y1, _ in cells:
+            if y0 > ITEMS_Y0 and y0 not in seen_hy:
+                draw.line([0, y0, WIDTH - 1, y0], fill="#1e1e2e", width=1)
+                seen_hy.add(y0)
+            if x0 > 0:
+                key = (x0, y0, y1)
+                if key not in seen_vx:
+                    draw.line([x0, y0, x0, y1 - 1], fill="#1e1e2e", width=1)
+                    seen_vx.add(key)
 
     def _format_value(self, value: object, fmt: str) -> str:
         if value is None:

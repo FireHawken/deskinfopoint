@@ -48,6 +48,19 @@ subscriptions:
     value_path: "state"      # extract from JSON: {"state": "heating", ...}
     entity_id: "climate.boiler"            # prefetch uses HA state field directly (ignores value_path)
 
+  # Example: enum values mapped to short display strings
+  # - id: "outdoor_air_quality"
+  #   topic: "homeassistant/sensor/outdoor_air_quality/state"
+  #   label: "Air quality"
+  #   unit: ""
+  #   value_path: "state"
+  #   value_map:
+  #     very_good_air_quality: "Very Good"
+  #     good_air_quality: "Good"
+  #     moderate_air_quality: "Moderate"
+  #     poor_air_quality: "Poor"
+  #     very_poor_air_quality: "Very Poor"
+
 screens:
   - name: "Air Quality"
     type: sensor
@@ -74,6 +87,22 @@ screens:
         format: "{:.1f}"
       - subscription_id: "boiler_status"
         format: "{}"
+
+  # Mixed screen: combine SCD-30 sensor readings and MQTT values on one screen.
+  # Sensor items use 'source' (co2 | temperature | humidity).
+  # MQTT items use 'subscription_id' (references subscriptions above).
+  # Label and unit on MQTT items override the subscription's label/unit.
+  # - name: "Overview"
+  #   type: mixed
+  #   items:
+  #     - source: co2
+  #       label: "CO2"
+  #       unit: "ppm"
+  #       format: "{:.0f}"
+  #     - subscription_id: "outdoor_temp"
+  #       format: "{:.1f}"
+  #     - subscription_id: "boiler_status"
+  #       format: "{}"
 
   - name: "Brightness"
     type: brightness         # X = dim (-10%), Y = brighten (+10%); overrides global X/Y on this screen

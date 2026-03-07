@@ -78,6 +78,7 @@ class SubscriptionConfig:
     unit: str = ""
     value_path: str = ""
     entity_id: str = ""   # HA entity id for startup prefetch (e.g. sensor.lumi_temp4_temperature_2)
+    value_map: dict[str, str] = field(default_factory=dict)  # map raw MQTT values to display strings
 
 
 @dataclass
@@ -95,10 +96,20 @@ class MqttItem:
 
 
 @dataclass
+class MixedItem:
+    """Item for a 'mixed' screen — either a sensor source or an MQTT subscription."""
+    source: str = ""           # "co2" | "temperature" | "humidity"
+    subscription_id: str = ""  # MQTT subscription id
+    label: str = ""            # explicit label; MQTT items fall back to subscription label
+    unit: str = ""             # explicit unit; MQTT items fall back to subscription unit
+    format: str = "{}"
+
+
+@dataclass
 class ScreenConfig:
     name: str
-    type: str   # "sensor" | "mqtt"
-    items: list[SensorItem | MqttItem] = field(default_factory=list)
+    type: str   # "sensor" | "mqtt" | "mixed" | "brightness" | "led_brightness"
+    items: list[SensorItem | MqttItem | MixedItem] = field(default_factory=list)
 
 
 @dataclass
@@ -223,6 +234,9 @@ def load_config(path: str) -> AppConfig:
     # --- subscriptions ---
     subscriptions: list[SubscriptionConfig] = []
     for i, sub in enumerate(raw.get("subscriptions", [])):
+        raw_map = sub.get("value_map", {})
+        if not isinstance(raw_map, dict):
+            raise ConfigError(f"value_map in subscriptions[{i}] must be a mapping")
         subscriptions.append(SubscriptionConfig(
             id=_require(sub, "id", f"subscriptions[{i}]"),
             topic=_require(sub, "topic", f"subscriptions[{i}]"),
@@ -230,6 +244,7 @@ def load_config(path: str) -> AppConfig:
             unit=sub.get("unit", ""),
             value_path=sub.get("value_path", ""),
             entity_id=sub.get("entity_id", ""),
+            value_map={str(k): str(v) for k, v in raw_map.items()},
         ))
 
     # --- screens ---
@@ -251,8 +266,22 @@ def load_config(path: str) -> AppConfig:
                     subscription_id=_require(item, "subscription_id", ctx),
                     format=item.get("format", "{}"),
                 ))
-            elif sc_type == "brightness":
-                pass  # brightness screen takes no items
+            elif sc_type == "mixed":
+                src = item.get("source", "")
+                sub_id = item.get("subscription_id", "")
+                if not src and not sub_id:
+                    raise ConfigError(f"Item in {ctx} must have 'source' or 'subscription_id'")
+                if src and sub_id:
+                    raise ConfigError(f"Item in {ctx} cannot have both 'source' and 'subscription_id'")
+                items.append(MixedItem(
+                    source=src,
+                    subscription_id=sub_id,
+                    label=item.get("label", ""),
+                    unit=item.get("unit", ""),
+                    format=item.get("format", "{}"),
+                ))
+            elif sc_type in ("brightness", "led_brightness"):
+                pass  # these screens take no items
             else:
                 raise ConfigError(f"Unknown screen type {sc_type!r} in screens[{i}]")
         screens.append(ScreenConfig(
