@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 from displayhatmini_lite import DisplayHATMini  # type: ignore[import-untyped]
 
 from ..config import ButtonConfig
-from ..screens.base import Screen
-from ..state import SharedState
+from ..state import NavMode, SharedState
 
 if TYPE_CHECKING:
     from ..mqtt_client import MQTTClient
@@ -29,15 +28,29 @@ _LOCKOUT = 0.2          # seconds: after any press, ignore all other buttons
 
 
 class ButtonHandler:
-    """Polls button states in a thread and dispatches configured actions on press.
+    """Polls button states and dispatches mode-aware actions.
 
-    Before falling through to the global button config, the current screen's
-    handle_button() is called.  This lets screens like BrightnessScreen intercept
-    X/Y for local actions without changing the global config.
+    Button layout (physical):
+      A (top-left)     B (bottom-left)
+      X (top-right)    Y (bottom-right)
 
-    GPIO.add_event_detect is broken on Linux 6.x with RPi.GPIO 0.7.x due to the
-    sysfs GPIO base offset change (gpiochip512).  Polling via GPIO.input() works
-    correctly and is the safe cross-kernel approach.
+    DATA mode:
+      A → enter settings screen
+      B → next data screen
+      X → configured mqtt_publish (or no-op)
+      Y → configured mqtt_publish (or no-op)
+
+    SETTINGS mode (list navigation):
+      A → enter edit mode for highlighted setting
+      B → exit settings, return to data screens
+      X → move cursor up
+      Y → move cursor down
+
+    EDIT mode (change a setting value):
+      A → confirm and apply
+      B → cancel (discard changes)
+      X → increase value
+      Y → decrease value
     """
 
     def __init__(
@@ -47,14 +60,12 @@ class ButtonHandler:
         state: SharedState,
         mqtt: "MQTTClient",
         shutdown: threading.Event,
-        screens: list[Screen],
     ) -> None:
         self._display = display
         self._buttons = buttons
         self._state = state
         self._mqtt = mqtt
         self._shutdown = shutdown
-        self._screens = screens
         self._thread = threading.Thread(
             target=self._run, name="buttons", daemon=False
         )
@@ -87,7 +98,6 @@ class ButtonHandler:
                         if now - last_press_time >= _LOCKOUT:
                             self._on_press(name)
                             last_press_time = now
-                            # Reset sibling counts so no other button fires this sweep.
                             for other in counts:
                                 if other != name:
                                     counts[other] = 0
@@ -98,32 +108,46 @@ class ButtonHandler:
         logger.info("Button polling stopped")
 
     def _on_press(self, name: str) -> None:
-        # Night mode: any press wakes the display/LED; the press itself is consumed.
+        # Night mode: any press wakes; the press itself is consumed.
         if self._state.is_night_sleeping():
             self._state.night_wake()
             return
 
-        # Give the current screen first chance to handle the button.
-        screen = self._screens[self._state.get_current_screen()]
-        if screen.handle_button(name, self._state, self._display):
-            return
+        mode = self._state.get_nav_mode()
 
-        # Fall through to global config.
-        cfg = self._buttons.get(name)
-        if cfg is None:
-            logger.debug("Button %s pressed but not configured", name)
-            return
-        self._dispatch(name, cfg)
+        if mode == NavMode.DATA:
+            if name == "A":
+                self._state.enter_settings()
+                logger.debug("→ enter settings")
+            elif name == "B":
+                self._state.next_screen()
+                logger.debug("→ next screen (%d)", self._state.get_current_screen())
+            elif name in ("X", "Y"):
+                cfg = self._buttons.get(name)
+                if cfg and cfg.action == "mqtt_publish":
+                    self._mqtt.publish(cfg.topic, cfg.payload)
+                    logger.debug("Button %s → publish %s = %r", name, cfg.topic, cfg.payload)
 
-    def _dispatch(self, name: str, cfg: ButtonConfig) -> None:
-        if cfg.action == "next_screen":
-            self._state.next_screen()
-            logger.debug("Button %s → next screen (%d)", name, self._state.get_current_screen())
-        elif cfg.action == "prev_screen":
-            self._state.prev_screen()
-            logger.debug("Button %s → prev screen (%d)", name, self._state.get_current_screen())
-        elif cfg.action == "mqtt_publish":
-            self._mqtt.publish(cfg.topic, cfg.payload)
-            logger.debug("Button %s → publish %s = %r", name, cfg.topic, cfg.payload)
-        else:
-            logger.warning("Button %s: unknown action %r", name, cfg.action)
+        elif mode == NavMode.SETTINGS:
+            if name == "A":
+                self._state.enter_edit()
+                logger.debug("→ enter edit (cursor=%d)", self._state.get_settings_cursor())
+            elif name == "B":
+                self._state.exit_settings()
+                logger.debug("→ exit settings")
+            elif name == "X":
+                self._state.settings_move(-1)   # cursor up
+            elif name == "Y":
+                self._state.settings_move(1)    # cursor down
+
+        elif mode == NavMode.EDIT:
+            if name == "A":
+                self._state.confirm_edit()
+                logger.debug("→ confirm edit")
+            elif name == "B":
+                self._state.cancel_edit()
+                logger.debug("→ cancel edit")
+            elif name == "X":
+                self._state.edit_step(1)    # increase
+            elif name == "Y":
+                self._state.edit_step(-1)   # decrease

@@ -4,10 +4,17 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .config import NightModeConfig
+
+
+class NavMode(Enum):
+    DATA = "data"
+    SETTINGS = "settings"
+    EDIT = "edit"
 
 
 @dataclass
@@ -38,6 +45,9 @@ class SharedState:
         self._night_mode = night_mode
         self._night_wake_until: float = 0.0   # monotonic; 0 = not woken
         self._version: int = 0  # incremented on every write; readers use this to skip redundant work
+        self._nav_mode: NavMode = NavMode.DATA
+        self._settings_cursor: int = 0
+        self._edit_value: float = 0.0
 
     # --- Version (change detection) ---
 
@@ -62,6 +72,81 @@ class SharedState:
     def prev_screen(self) -> None:
         with self._lock:
             self._current_screen = (self._current_screen - 1) % self._screen_count
+            self._version += 1
+
+    # --- Navigation mode ---
+
+    def get_nav_mode(self) -> NavMode:
+        with self._lock:
+            return self._nav_mode
+
+    def enter_settings(self) -> None:
+        with self._lock:
+            self._nav_mode = NavMode.SETTINGS
+            self._settings_cursor = 0
+            self._version += 1
+
+    def exit_settings(self) -> None:
+        with self._lock:
+            self._nav_mode = NavMode.DATA
+            self._version += 1
+
+    def get_settings_cursor(self) -> int:
+        with self._lock:
+            return self._settings_cursor
+
+    def settings_move(self, direction: int) -> None:
+        """direction: -1 = move cursor up, +1 = move cursor down."""
+        from .settings_defs import SETTINGS
+        with self._lock:
+            self._settings_cursor = (self._settings_cursor + direction) % len(SETTINGS)
+            self._version += 1
+
+    def enter_edit(self) -> None:
+        """Begin editing the highlighted setting; captures its current value."""
+        with self._lock:
+            # Access raw fields directly to avoid re-entrant lock (getters also lock)
+            if self._settings_cursor == 0:
+                current = self._brightness
+            elif self._settings_cursor == 1:
+                current = self._led_brightness
+            else:
+                current = 0.0
+            self._edit_value = current
+            self._nav_mode = NavMode.EDIT
+            self._version += 1
+
+    def get_edit_value(self) -> float:
+        with self._lock:
+            return self._edit_value
+
+    def edit_step(self, direction: int) -> None:
+        """direction: +1 = increase, -1 = decrease."""
+        from .settings_defs import SETTINGS  # import is cached after first call
+        with self._lock:
+            defn = SETTINGS[self._settings_cursor]
+            self._edit_value = max(
+                defn.min_val,
+                min(defn.max_val, round(self._edit_value + direction * defn.step, 2)),
+            )
+            self._version += 1
+
+    def confirm_edit(self) -> None:
+        """Apply the edit value to the corresponding setting and return to list."""
+        with self._lock:
+            cursor = self._settings_cursor
+            val = self._edit_value
+            if cursor == 0:
+                self._brightness = max(0.05, min(1.0, round(val, 2)))
+            elif cursor == 1:
+                self._led_brightness = max(0.0, min(1.0, round(val, 2)))
+            self._nav_mode = NavMode.SETTINGS
+            self._version += 1
+
+    def cancel_edit(self) -> None:
+        """Discard the edit value and return to list."""
+        with self._lock:
+            self._nav_mode = NavMode.SETTINGS
             self._version += 1
 
     # --- Sensor data ---

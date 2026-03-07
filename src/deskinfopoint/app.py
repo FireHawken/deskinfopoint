@@ -15,11 +15,10 @@ from .ha_prefetch import prefetch as ha_prefetch
 from .mqtt_client import MQTTClient
 from . import persistence
 from .screens.base import Screen
-from .screens.brightness_screen import BrightnessScreen
-from .screens.led_brightness_screen import LedBrightnessScreen
 from .screens.mixed_screen import MixedScreen
 from .screens.mqtt_screen import MQTTScreen
 from .screens.sensor_screen import SensorScreen
+from .screens.settings_screen import SettingsScreen
 from .sensors.scd30 import SCD30Sensor
 from .state import SharedState
 
@@ -38,10 +37,11 @@ def _build_screens(
             screens.append(MQTTScreen(cfg, subs_by_id))
         elif cfg.type == "mixed":
             screens.append(MixedScreen(cfg, subs_by_id))
-        elif cfg.type == "brightness":
-            screens.append(BrightnessScreen(cfg.name))
-        elif cfg.type == "led_brightness":
-            screens.append(LedBrightnessScreen(cfg.name))
+        elif cfg.type in ("brightness", "led_brightness"):
+            logger.warning(
+                "Screen type %r is deprecated; brightness is now in the Settings screen (press A).",
+                cfg.type,
+            )
         else:
             logger.warning("Unknown screen type %r — skipped", cfg.type)
     return screens
@@ -88,12 +88,13 @@ class App:
         self._led = LEDController(
             self._display_hw, evaluator, config.led_idle, self._state, self._shutdown
         )
+        settings_screen = SettingsScreen()
         self._renderer = DisplayController(
-            self._display_hw, screens, self._state, config.display.fps, self._shutdown
+            self._display_hw, screens, self._state, config.display.fps,
+            self._shutdown, settings_screen,
         )
         self._buttons = ButtonHandler(
-            self._display_hw, config.buttons, self._state, self._mqtt,
-            self._shutdown, screens,
+            self._display_hw, config.buttons, self._state, self._mqtt, self._shutdown,
         )
 
     def run(self) -> None:
